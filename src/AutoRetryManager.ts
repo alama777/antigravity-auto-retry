@@ -19,6 +19,10 @@ export class AutoRetryManager {
         this.reloadConfig();
     }
 
+    public async checkAvailability(): Promise<boolean> {
+        return await this.cdpService.checkAvailability(this.cdpHost, this.cdpPort);
+    }
+
     public toggle() {
         this.isEnabled = !this.isEnabled;
         if (this.isEnabled) {

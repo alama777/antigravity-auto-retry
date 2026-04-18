@@ -1,7 +1,12 @@
 {
-  "name": "auto-retry-plugin",
+  "name": "antigravity-auto-retry",
   "displayName": "Antigravity Auto-Retry",
-  "description": "Automatic recovery of Antigravity chat agent",
+  "publisher": "alama777",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alama777/antigravity-auto-retry.git"
+  },
+  "description": "A Google Antigravity extension that auto-clicks Retry on server errors",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.80.0"

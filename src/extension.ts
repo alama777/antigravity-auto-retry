@@ -1,10 +1,18 @@
 import * as vscode from 'vscode';
 import { AutoRetryManager } from './AutoRetryManager';
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('Auto-Retry Plugin is now active');
 
     const autoRetryManager = new AutoRetryManager();
+
+    // Check CDP availability
+    const isAvailable = await autoRetryManager.checkAvailability();
+    
+    if (!isAvailable) {
+        vscode.window.showErrorMessage('Auto-Retry: CDP WebSocket is unavailable. Please ensure VS Code was started with --remote-debugging-port.');
+        return;
+    }
 
     // Create status bar item
     const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);

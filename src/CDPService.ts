@@ -3,40 +3,27 @@ import * as WebSocket from 'ws';
 
 export class CDPService {
     public isProcessing: boolean = false;
+    
+    private ws: WebSocket | null = null;
+    private sessionId: string | null = null;
+    private msgId = 1;
+    private pendingRequests = new Map<number, { resolve: (val: any) => void, reject: (err: any) => void, timer: NodeJS.Timeout }>();
 
     public async checkAndRetry(): Promise<'RETRIED' | 'NO_ERROR' | 'NOT_FOUND'> {
+        if (this.isProcessing) return 'NO_ERROR';
         this.isProcessing = true;
+        
         try {
-            // 1. Get browser websocket url and target id
-            const versionData = await this.httpGet('http://127.0.0.1:9222/json/version');
-            if (!versionData) return 'NOT_FOUND';
-            
-            const browserWsUrl = JSON.parse(versionData).webSocketDebuggerUrl;
-            if (!browserWsUrl) return 'NOT_FOUND';
-
-            const targetsData = await this.httpGet('http://127.0.0.1:9222/json');
-            if (!targetsData) return 'NOT_FOUND';
-
-            const targets = JSON.parse(targetsData);
-            let targetId: string | null = null;
-
-            for (const p of targets) {
-                if (p.type === 'page' || p.type === 'webview') {
-                    if (p.title && (p.title.includes('MCP Server') || p.title.includes('Launchpad') || p.title.includes('Manager'))) continue;
-                    // Usually the Antigravity agent panel will match this if it has webSocketDebuggerUrl
-                    if (p.webSocketDebuggerUrl) {
-                        targetId = p.id;
-                        break;
-                    }
-                }
+            if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.sessionId) {
+                const connected = await this.connect();
+                if (!connected) return 'NOT_FOUND';
             }
 
-            if (!targetId) return 'NOT_FOUND';
-
-            return await this.executeFlatSession(browserWsUrl, targetId);
-
+            const result = await this.evaluatePayload();
+            return result;
         } catch (e) {
             console.error('CDP Error:', e);
+            this.disconnect();
             return 'NOT_FOUND';
         } finally {
             this.isProcessing = false;
@@ -51,17 +38,140 @@ export class CDPService {
                 res.on('end', () => resolve(data));
             });
             req.on('error', () => resolve(null));
+            req.setTimeout(2000, () => {
+                req.destroy();
+                resolve(null);
+            });
         });
     }
 
-    private executeFlatSession(browserWsUrl: string, targetId: string): Promise<'RETRIED' | 'NO_ERROR'> {
+    private async connect(): Promise<boolean> {
+        this.disconnect();
+        
+        const versionData = await this.httpGet('http://127.0.0.1:9222/json/version');
+        if (!versionData) return false;
+        
+        let browserWsUrl;
+        try {
+            browserWsUrl = JSON.parse(versionData).webSocketDebuggerUrl;
+        } catch (e) {
+            return false;
+        }
+        if (!browserWsUrl) return false;
+
+        const targetsData = await this.httpGet('http://127.0.0.1:9222/json');
+        if (!targetsData) return false;
+
+        let targets;
+        try {
+            targets = JSON.parse(targetsData);
+        } catch (e) {
+            return false;
+        }
+
+        let targetId: string | null = null;
+
+        for (const p of targets) {
+            if (p.type === 'page' || p.type === 'webview') {
+                if (p.title && (p.title.includes('MCP Server') || p.title.includes('Launchpad') || p.title.includes('Manager'))) continue;
+                if (p.webSocketDebuggerUrl) {
+                    targetId = p.id;
+                    break;
+                }
+            }
+        }
+
+        if (!targetId) return false;
+
         return new Promise((resolve) => {
             const ws = new WebSocket(browserWsUrl);
-            let msgId = 1;
-            let sessionId: string | null = null;
-            let resolvePromise = resolve;
+            const connectTimeout = setTimeout(() => {
+                ws.terminate();
+                resolve(false);
+            }, 3000);
 
-            // Define the payload script
+            ws.on('open', () => {
+                clearTimeout(connectTimeout);
+                this.ws = ws;
+                
+                const id = this.msgId++;
+                const attachPromise = new Promise<boolean>((resolveAttach) => {
+                    this.pendingRequests.set(id, {
+                        resolve: (msg) => {
+                            if (msg.result && msg.result.sessionId) {
+                                this.sessionId = msg.result.sessionId;
+                                resolveAttach(true);
+                            } else {
+                                resolveAttach(false);
+                            }
+                        },
+                        reject: () => resolveAttach(false),
+                        timer: setTimeout(() => resolveAttach(false), 3000)
+                    });
+                });
+
+                ws.send(JSON.stringify({
+                    id: id,
+                    method: 'Target.attachToTarget',
+                    params: { targetId: targetId, flatten: true }
+                }));
+
+                attachPromise.then(success => {
+                    resolve(success);
+                });
+            });
+
+            ws.on('message', (data: any) => {
+                let msg;
+                try {
+                    msg = JSON.parse(data.toString());
+                } catch (e) {
+                    console.error('Failed to parse CDP message:', e);
+                    return;
+                }
+
+                if (msg.method === 'Target.attachedToTarget' && !this.sessionId) {
+                     this.sessionId = msg.params.sessionId;
+                }
+
+                if (msg.id && this.pendingRequests.has(msg.id)) {
+                    const req = this.pendingRequests.get(msg.id)!;
+                    clearTimeout(req.timer);
+                    this.pendingRequests.delete(msg.id);
+                    req.resolve(msg);
+                }
+            });
+
+            ws.on('error', () => {
+                this.disconnect();
+                resolve(false);
+            });
+
+            ws.on('close', () => {
+                this.disconnect();
+            });
+        });
+    }
+
+    private disconnect() {
+        if (this.ws) {
+            try { this.ws.terminate(); } catch (e) {}
+            this.ws = null;
+        }
+        this.sessionId = null;
+        for (const req of this.pendingRequests.values()) {
+            clearTimeout(req.timer);
+            req.reject(new Error('Disconnected'));
+        }
+        this.pendingRequests.clear();
+    }
+
+    private evaluatePayload(): Promise<'RETRIED' | 'NO_ERROR'> {
+        return new Promise((resolve, reject) => {
+            if (!this.ws || !this.sessionId) {
+                return reject(new Error('No WS or sessionId'));
+            }
+
             const expression = `(() => {
                 return new Promise((resolve) => {
                     async function processChat(doc) {
@@ -182,54 +292,25 @@ export class CDPService {
                 });
             })()`;
 
-            ws.on('open', () => {
-                // Attach to Target (flat session mode)
-                ws.send(JSON.stringify({
-                    id: msgId++,
-                    method: 'Target.attachToTarget',
-                    params: { targetId: targetId, flatten: true }
-                }));
-            });
-
-            const timeoutId = setTimeout(() => {
-                ws.close();
-                resolvePromise('NO_ERROR');
-            }, 5000);
-
-            ws.on('message', (data: any) => {
-                const msg = JSON.parse(data.toString());
-                
-                // When attached to target
-                if (msg.method === 'Target.attachedToTarget') {
-                    sessionId = msg.params.sessionId;
-                    // Evaluate script in context
-                    ws.send(JSON.stringify({
-                        sessionId: sessionId,
-                        id: msgId++,
-                        method: 'Runtime.evaluate',
-                        params: { expression: expression, awaitPromise: true, returnByValue: true }
-                    }));
-                }
-
-                // Handling evaluate result
-                if (msg.id && msg.result && msg.result.result) {
-                    const resultVal = msg.result.result.value;
-                    if (resultVal === 'RETRIED') {
-                        clearTimeout(timeoutId);
-                        ws.close();
-                        resolvePromise('RETRIED');
-                    } else if (resultVal === 'NO_ERROR') {
-                        clearTimeout(timeoutId);
-                        ws.close();
-                        resolvePromise('NO_ERROR');
+            const id = this.msgId++;
+            this.pendingRequests.set(id, {
+                resolve: (msg) => {
+                    if (msg.result && msg.result.result) {
+                        resolve(msg.result.result.value === 'RETRIED' ? 'RETRIED' : 'NO_ERROR');
+                    } else {
+                        resolve('NO_ERROR');
                     }
-                }
+                },
+                reject: reject,
+                timer: setTimeout(() => reject(new Error('Timeout')), 5000)
             });
 
-            ws.on('error', () => {
-                clearTimeout(timeoutId);
-                resolvePromise('NO_ERROR');
-            });
+            this.ws.send(JSON.stringify({
+                sessionId: this.sessionId,
+                id: id,
+                method: 'Runtime.evaluate',
+                params: { expression: expression, awaitPromise: true, returnByValue: true }
+            }));
         });
     }
 }

@@ -1,0 +1,6 @@
+\.git\
+\archive\
+\src\
+.gitignore
+.vscodeignore
+tsconfig.json

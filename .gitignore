@@ -1,0 +1,20 @@
+# Build/dependencies
+node_modules/
+out/
+dist/
+
+# Archives and build artifacts
+archive/
+*.vsix
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+.vscode-test/

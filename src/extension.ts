@@ -4,7 +4,16 @@ import { AutoRetryManager } from './AutoRetryManager';
 export async function activate(context: vscode.ExtensionContext) {
     console.log('Auto-Retry Plugin is now active');
 
-    const autoRetryManager = new AutoRetryManager();
+    const outputChannel = vscode.window.createOutputChannel('Auto-Retry');
+    context.subscriptions.push(outputChannel);
+    outputChannel.appendLine(`[${new Date().toLocaleTimeString()}] INFO: Auto-Retry Plugin activated.`);
+
+    const logger = {
+        log: (msg: string) => outputChannel.appendLine(`[${new Date().toLocaleTimeString()}] INFO: ${msg}`),
+        error: (msg: string, e?: any) => outputChannel.appendLine(`[${new Date().toLocaleTimeString()}] ERROR: ${msg} ${e ? e : ''}`)
+    };
+
+    const autoRetryManager = new AutoRetryManager(logger);
 
     // Check CDP availability
     const isAvailable = await autoRetryManager.checkAvailability();

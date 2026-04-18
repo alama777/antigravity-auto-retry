@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CDPService } from './CDPService';
+import { CDPService, Logger } from './CDPService';
 
 export class AutoRetryManager {
     public isEnabled: boolean = false;
@@ -14,9 +14,10 @@ export class AutoRetryManager {
     private cdpService: CDPService;
     private onCounterUpdatedCallback: (() => void) | null = null;
 
-    constructor() {
-        this.cdpService = new CDPService();
+    constructor(private logger?: Logger) {
+        this.cdpService = new CDPService(logger);
         this.reloadConfig();
+        this.logger?.log('AutoRetryManager initialized.');
     }
 
     public async checkAvailability(): Promise<boolean> {
@@ -25,6 +26,7 @@ export class AutoRetryManager {
 
     public toggle() {
         this.isEnabled = !this.isEnabled;
+        this.logger?.log(`Auto-Retry toggled: ${this.isEnabled ? 'ON' : 'OFF'}`);
         if (this.isEnabled) {
             this.startPolling();
         } else {
@@ -85,12 +87,14 @@ export class AutoRetryManager {
 
             const result = await this.cdpService.checkAndRetry(config);
             if (result === 'RETRIED') {
+                this.logger?.log('Error detected! Performed Auto-Retry.');
                 this.retryCount++;
                 if (this.onCounterUpdatedCallback) {
                     this.onCounterUpdatedCallback();
                 }
             }
         } catch (error) {
+            this.logger?.error('AutoRetryManager check failed:', error);
             console.error('AutoRetryManager check failed:', error);
         }
     }

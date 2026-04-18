@@ -7,8 +7,15 @@ export interface CDPConfig {
     undoThreshold: number;
 }
 
+export interface Logger {
+    log: (msg: string) => void;
+    error: (msg: string, err?: any) => void;
+}
+
 export class CDPService {
     public isProcessing: boolean = false;
+
+    constructor(private logger?: Logger) {}
     
     private ws: WebSocket | null = null;
     private msgId = 1;
@@ -25,19 +32,26 @@ export class CDPService {
         try {
             // Reconnect if config changed
             if (this.currentHost !== config.host || this.currentPort !== config.port) {
+                this.logger?.log(`Config changed, reconnecting to ${config.host}:${config.port}`);
                 this.disconnect();
                 this.currentHost = config.host;
                 this.currentPort = config.port;
             }
 
             if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                this.logger?.log(`Connecting to CDP at ${config.host}:${config.port}...`);
                 const connected = await this.connect();
-                if (!connected) return 'NOT_FOUND';
+                if (!connected) {
+                    this.logger?.log('Failed to connect to CDP.');
+                    return 'NOT_FOUND';
+                }
+                this.logger?.log('Connected to CDP successfully.');
             }
 
             const result = await this.evaluatePayload(config.undoThreshold);
             return result;
         } catch (e) {
+            this.logger?.error('CDP Error:', e);
             console.error('CDP Error:', e);
             this.disconnect();
             return 'NOT_FOUND';
@@ -215,10 +229,10 @@ export class CDPService {
                 async function processChat(doc) {
                     const sleep = ms => new Promise(r => setTimeout(r, ms));
                     const panel = doc.querySelector('.antigravity-agent-side-panel');
-                    if (!panel) return null;
+                    if (!panel) return 'NOT_FOUND';
                     
                     if (!panel.innerText.includes('Agent terminated due to error')) {
-                        return null;
+                        return 'NO_ERROR';
                     }
 
                     // Determine how many seconds the agent worked before the error
@@ -311,7 +325,7 @@ export class CDPService {
                         }
                     }
 
-                    return null;
+                    return 'NO_ERROR';
                 }
 
                 // We evaluate exactly in the target's document

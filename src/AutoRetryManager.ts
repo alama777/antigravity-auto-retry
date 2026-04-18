@@ -4,7 +4,12 @@ import { CDPService } from './CDPService';
 export class AutoRetryManager {
     public isEnabled: boolean = false;
     private retryCount: number = 0;
-    private pollIntervalSec: number = 2;
+    private pollIntervalSec: number = 5;
+    
+    private cdpHost: string = '127.0.0.1';
+    private cdpPort: number = 9222;
+    private undoThresholdSeconds: number = 1;
+
     private timer: NodeJS.Timeout | null = null;
     private cdpService: CDPService;
     private onCounterUpdatedCallback: (() => void) | null = null;
@@ -29,7 +34,10 @@ export class AutoRetryManager {
 
     public reloadConfig() {
         const config = vscode.workspace.getConfiguration('autoRetry');
-        this.pollIntervalSec = config.get<number>('pollInterval', 2);
+        this.pollIntervalSec = config.get<number>('pollInterval', 5);
+        this.cdpHost = config.get<string>('cdpHost', '127.0.0.1');
+        this.cdpPort = config.get<number>('cdpPort', 9222);
+        this.undoThresholdSeconds = config.get<number>('undoThresholdSeconds', 1);
         
         // Restart timer if running to apply new interval
         if (this.isEnabled) {
@@ -56,6 +64,8 @@ export class AutoRetryManager {
             clearInterval(this.timer);
             this.timer = null;
         }
+        // Force disconnect so host/port changes can take effect next time
+        this.cdpService.forceDisconnect();
     }
 
     private async tick() {
@@ -63,7 +73,13 @@ export class AutoRetryManager {
         if (this.cdpService.isProcessing) return;
 
         try {
-            const result = await this.cdpService.checkAndRetry();
+            const config = {
+                host: this.cdpHost,
+                port: this.cdpPort,
+                undoThreshold: this.undoThresholdSeconds
+            };
+
+            const result = await this.cdpService.checkAndRetry(config);
             if (result === 'RETRIED') {
                 this.retryCount++;
                 if (this.onCounterUpdatedCallback) {

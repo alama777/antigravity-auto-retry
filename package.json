@@ -1,7 +1,7 @@
 {
   "name": "auto-retry-plugin",
   "displayName": "Antigravity Auto-Retry",
-  "description": "Автоматическое восстановление чата Antigravity",
+  "description": "Automatic recovery of Antigravity chat agent",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.80.0"
@@ -19,8 +19,23 @@
       "properties": {
         "autoRetry.pollInterval": {
           "type": "number",
-          "default": 2,
-          "description": "Частота опроса DOM-дерева в секундах для поиска ошибки в агенте."
+          "default": 5,
+          "description": "Polling interval in seconds to search for errors in the agent."
+        },
+        "autoRetry.cdpHost": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Host address for the Chrome DevTools Protocol."
+        },
+        "autoRetry.cdpPort": {
+          "type": "number",
+          "default": 9222,
+          "description": "Port number for the Chrome DevTools Protocol."
+        },
+        "autoRetry.undoThresholdSeconds": {
+          "type": "number",
+          "default": 1,
+          "description": "Time threshold (in seconds) to perform Undo. If error time <= threshold, Undo is performed. If 0, Undo is never performed."
         }
       }
     },

@@ -1,6 +1,12 @@
 import * as http from 'http';
 import * as WebSocket from 'ws';
 
+export interface CDPConfig {
+    host: string;
+    port: number;
+    undoThreshold: number;
+}
+
 export class CDPService {
     public isProcessing: boolean = false;
     
@@ -9,17 +15,28 @@ export class CDPService {
     private msgId = 1;
     private pendingRequests = new Map<number, { resolve: (val: any) => void, reject: (err: any) => void, timer: NodeJS.Timeout }>();
 
-    public async checkAndRetry(): Promise<'RETRIED' | 'NO_ERROR' | 'NOT_FOUND'> {
+    // Store current config to detect if host/port changed and we need to reconnect
+    private currentHost: string = '';
+    private currentPort: number = 0;
+
+    public async checkAndRetry(config: CDPConfig): Promise<'RETRIED' | 'NO_ERROR' | 'NOT_FOUND'> {
         if (this.isProcessing) return 'NO_ERROR';
         this.isProcessing = true;
         
         try {
+            // Reconnect if config changed
+            if (this.currentHost !== config.host || this.currentPort !== config.port) {
+                this.disconnect();
+                this.currentHost = config.host;
+                this.currentPort = config.port;
+            }
+
             if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.sessionId) {
                 const connected = await this.connect();
                 if (!connected) return 'NOT_FOUND';
             }
 
-            const result = await this.evaluatePayload();
+            const result = await this.evaluatePayload(config.undoThreshold);
             return result;
         } catch (e) {
             console.error('CDP Error:', e);
@@ -28,6 +45,10 @@ export class CDPService {
         } finally {
             this.isProcessing = false;
         }
+    }
+
+    public forceDisconnect() {
+        this.disconnect();
     }
 
     private httpGet(url: string): Promise<string | null> {
@@ -48,7 +69,10 @@ export class CDPService {
     private async connect(): Promise<boolean> {
         this.disconnect();
         
-        const versionData = await this.httpGet('http://127.0.0.1:9222/json/version');
+        const baseUrl = `http://${this.currentHost}:${this.currentPort}`;
+
+        // 1. Fetch browser version to get debugger URL
+        const versionData = await this.httpGet(`${baseUrl}/json/version`);
         if (!versionData) return false;
         
         let browserWsUrl;
@@ -59,7 +83,8 @@ export class CDPService {
         }
         if (!browserWsUrl) return false;
 
-        const targetsData = await this.httpGet('http://127.0.0.1:9222/json');
+        // 2. Fetch all targets
+        const targetsData = await this.httpGet(`${baseUrl}/json`);
         if (!targetsData) return false;
 
         let targets;
@@ -73,6 +98,7 @@ export class CDPService {
 
         for (const p of targets) {
             if (p.type === 'page' || p.type === 'webview') {
+                // Ignore general IDE panels
                 if (p.title && (p.title.includes('MCP Server') || p.title.includes('Launchpad') || p.title.includes('Manager'))) continue;
                 if (p.webSocketDebuggerUrl) {
                     targetId = p.id;
@@ -83,6 +109,7 @@ export class CDPService {
 
         if (!targetId) return false;
 
+        // 3. Establish persistent WebSocket connection
         return new Promise((resolve) => {
             const ws = new WebSocket(browserWsUrl);
             const connectTimeout = setTimeout(() => {
@@ -95,6 +122,8 @@ export class CDPService {
                 this.ws = ws;
                 
                 const id = this.msgId++;
+                // 4. Attach to Target (flat session mode)
+                // We use a pending request to wait for the attachedToTarget event
                 const attachPromise = new Promise<boolean>((resolveAttach) => {
                     this.pendingRequests.set(id, {
                         resolve: (msg) => {
@@ -130,10 +159,12 @@ export class CDPService {
                     return;
                 }
 
+                // In flat sessions, sessionId is sometimes delivered before the response to attachToTarget
                 if (msg.method === 'Target.attachedToTarget' && !this.sessionId) {
                      this.sessionId = msg.params.sessionId;
                 }
 
+                // Resolve any pending requests (like attachToTarget response)
                 if (msg.id && this.pendingRequests.has(msg.id)) {
                     const req = this.pendingRequests.get(msg.id)!;
                     clearTimeout(req.timer);
@@ -166,12 +197,13 @@ export class CDPService {
         this.pendingRequests.clear();
     }
 
-    private evaluatePayload(): Promise<'RETRIED' | 'NO_ERROR'> {
+    private evaluatePayload(undoThreshold: number): Promise<'RETRIED' | 'NO_ERROR'> {
         return new Promise((resolve, reject) => {
             if (!this.ws || !this.sessionId) {
                 return reject(new Error('No WS or sessionId'));
             }
 
+            // We inject the undoThreshold directly into the expression string.
             const expression = `(() => {
                 return new Promise((resolve) => {
                     async function processChat(doc) {
@@ -183,6 +215,7 @@ export class CDPService {
                             return null;
                         }
 
+                        // Determine how many seconds the agent worked before the error
                         const textNodes = [];
                         const walker = doc.createTreeWalker(panel, NodeFilter.SHOW_TEXT, null, false);
                         let node;
@@ -201,7 +234,12 @@ export class CDPService {
                             seconds = parseInt(match[1], 10);
                         }
 
-                        if (seconds === 1) {
+                        // Configurable threshold (e.g. 1)
+                        const threshold = ${undoThreshold};
+
+                        // Logic for Retry vs Undo
+                        if (threshold > 0 && seconds >= 0 && seconds <= threshold) {
+                            // Time worked is within the threshold, so we perform the Undo logic
                             const undoButtons = Array.from(panel.querySelectorAll('button, div[role="button"], span[role="button"]')).filter(btn => {
                                 const title = btn.getAttribute('title') || '';
                                 const ariaLabel = btn.getAttribute('aria-label') || '';
@@ -221,6 +259,7 @@ export class CDPService {
                                 
                                 await sleep(1000); 
                                 
+                                // Robust click helper to ensure React handles the event
                                 function robustClick(el) {
                                     el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
                                     el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
@@ -258,7 +297,8 @@ export class CDPService {
                                 }
                                 return 'RETRIED';
                             }
-                        } else if (seconds > 1) {
+                        } else {
+                            // If threshold is 0 (Undo disabled) OR worked seconds > threshold, just click Retry
                             const retryButtons = Array.from(panel.querySelectorAll('button')).filter(btn => btn.innerText && btn.innerText.includes('Retry'));
                             if (retryButtons.length > 0) {
                                 retryButtons[0].click();
@@ -275,6 +315,7 @@ export class CDPService {
                         return;
                     }
 
+                    // Also search in iframes
                     (async () => {
                         for (const frame of document.querySelectorAll('iframe, webview')) {
                             try {
@@ -305,6 +346,7 @@ export class CDPService {
                 timer: setTimeout(() => reject(new Error('Timeout')), 5000)
             });
 
+            // Evaluate script in context
             this.ws.send(JSON.stringify({
                 sessionId: this.sessionId,
                 id: id,

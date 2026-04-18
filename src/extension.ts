@@ -29,7 +29,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Handle configuration changes
     vscode.workspace.onDidChangeConfiguration(e => {
-        if (e.affectsConfiguration('autoRetry.pollInterval')) {
+        if (e.affectsConfiguration('autoRetry.pollInterval') ||
+            e.affectsConfiguration('autoRetry.cdpHost') ||
+            e.affectsConfiguration('autoRetry.cdpPort') ||
+            e.affectsConfiguration('autoRetry.undoThresholdSeconds')) {
             autoRetryManager.reloadConfig();
         }
     });
@@ -38,9 +41,9 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 function updateStatusBar(statusBarItem: vscode.StatusBarItem, manager: AutoRetryManager) {
-    const status = manager.isEnabled ? '$(sync~spin) Auto-Retry: Вкл' : '$(sync) Auto-Retry: Выкл';
-    statusBarItem.text = `${status} | Повторов: ${manager.getRetryCount()}`;
-    statusBarItem.tooltip = manager.isEnabled ? 'Нажмите, чтобы выключить автоповтор' : 'Нажмите, чтобы включить автоповтор';
+    const status = manager.isEnabled ? '$(sync~spin) Auto-Retry: ON' : '$(sync) Auto-Retry: OFF';
+    statusBarItem.text = `${status} | R: ${manager.getRetryCount()}`;
+    statusBarItem.tooltip = manager.isEnabled ? 'Click to disable Auto-Retry' : 'Click to enable Auto-Retry';
 }
 
 export function deactivate() {}

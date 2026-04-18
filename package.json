@@ -1,13 +1,15 @@
 {
   "name": "antigravity-auto-retry",
   "displayName": "Antigravity Auto-Retry",
+  "version": "0.0.1",
+  "description": "A Google Antigravity extension that auto-clicks Retry on server errors",
+  "icon": "images/icon.png",
   "publisher": "alama777",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/alama777/antigravity-auto-retry.git"
   },
-  "description": "A Google Antigravity extension that auto-clicks Retry on server errors",
-  "version": "0.0.1",
   "engines": {
     "vscode": "^1.80.0"
   },
@@ -54,7 +56,8 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "package": "npx @vscode/vsce package --no-yarn  -o builds/"
   },
   "dependencies": {
     "ws": "^8.16.0"

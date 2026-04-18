@@ -135,7 +135,10 @@ export class CDPService {
                             }
                         },
                         reject: () => resolveAttach(false),
-                        timer: setTimeout(() => resolveAttach(false), 3000)
+                        timer: setTimeout(() => {
+                            this.pendingRequests.delete(id);
+                            resolveAttach(false);
+                        }, 3000)
                     });
                 });
 
@@ -205,13 +208,13 @@ export class CDPService {
 
             // We inject the undoThreshold directly into the expression string.
             const expression = `(() => {
-                return new Promise((resolve) => {
+                return new Promise(async (resolve) => {
                     async function processChat(doc) {
                         const sleep = ms => new Promise(r => setTimeout(r, ms));
                         const panel = doc.querySelector('.antigravity-agent-side-panel');
                         if (!panel) return null;
                         
-                        if (!doc.body.innerText.includes('Agent terminated due to error')) {
+                        if (!panel.innerText.includes('Agent terminated due to error')) {
                             return null;
                         }
 
@@ -261,9 +264,10 @@ export class CDPService {
                                 
                                 // Robust click helper to ensure React handles the event
                                 function robustClick(el) {
-                                    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-                                    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-                                    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                                    const targetWindow = el.ownerDocument.defaultView || window;
+                                    el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: targetWindow }));
+                                    el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: targetWindow }));
+                                    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: targetWindow }));
                                 }
 
                                 const inputBox = panel.querySelector('#antigravity\\\\.agentSidePanelInputBox, textarea, [contenteditable="true"]');
@@ -309,27 +313,25 @@ export class CDPService {
                         return null;
                     }
 
-                    let result = processChat(document);
+                    let result = await processChat(document);
                     if (result) {
                         resolve(result);
                         return;
                     }
 
                     // Also search in iframes
-                    (async () => {
-                        for (const frame of document.querySelectorAll('iframe, webview')) {
-                            try {
-                                if (frame.contentWindow && frame.contentWindow.document) {
-                                    result = await processChat(frame.contentWindow.document);
-                                    if (result) {
-                                        resolve(result);
-                                        return;
-                                    }
+                    for (const frame of document.querySelectorAll('iframe, webview')) {
+                        try {
+                            if (frame.contentWindow && frame.contentWindow.document) {
+                                result = await processChat(frame.contentWindow.document);
+                                if (result) {
+                                    resolve(result);
+                                    return;
                                 }
-                            } catch (e) { }
-                        }
-                        resolve('NO_ERROR');
-                    })();
+                            }
+                        } catch (e) { }
+                    }
+                    resolve('NO_ERROR');
                 });
             })()`;
 
@@ -343,7 +345,10 @@ export class CDPService {
                     }
                 },
                 reject: reject,
-                timer: setTimeout(() => reject(new Error('Timeout')), 5000)
+                timer: setTimeout(() => {
+                    this.pendingRequests.delete(id);
+                    reject(new Error('Timeout'));
+                }, 5000)
             });
 
             // Evaluate script in context

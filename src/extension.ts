@@ -28,14 +28,14 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     // Handle configuration changes
-    vscode.workspace.onDidChangeConfiguration(e => {
+    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
         if (e.affectsConfiguration('autoRetry.pollInterval') ||
             e.affectsConfiguration('autoRetry.cdpHost') ||
             e.affectsConfiguration('autoRetry.cdpPort') ||
             e.affectsConfiguration('autoRetry.undoThresholdSeconds')) {
             autoRetryManager.reloadConfig();
         }
-    });
+    }));
 
     context.subscriptions.push(autoRetryManager);
 }

@@ -1,6 +1,6 @@
 # Antigravity Auto-Retry
 
-A highly reliable, automated recovery plugin for the **Google Antigravity** IDE. This plugin leverages the Chrome DevTools Protocol (CDP) to monitor the agent's side panel and automatically click **"Retry"** or perform an **"Undo & Resubmit"** flow when the agent terminates unexpectedly due to server or network errors.
+An automated recovery plugin for the **Google Antigravity** IDE. This plugin leverages the Chrome DevTools Protocol (CDP) to monitor the agent's side panel and automatically click **"Retry"** or perform an **"Undo & Resubmit"** flow when the agent terminates unexpectedly due to server or network errors.
 
 ## 🚀 Features
 

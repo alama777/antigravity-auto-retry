@@ -24,9 +24,10 @@ export class CDPService {
     // Store current config to detect if host/port changed and we need to reconnect
     private currentHost: string = '';
     private currentPort: number = 0;
+    private lastConnectionFailed: boolean = false;
 
-    public async checkAndRetry(config: CDPConfig): Promise<'RETRIED' | 'NO_ERROR' | 'NOT_FOUND'> {
-        if (this.isProcessing) return 'NO_ERROR';
+    public async checkAndRetry(config: CDPConfig): Promise<{ action: 'RETRIED' | 'NO_ERROR' | 'NOT_FOUND', logMsg?: string }> {
+        if (this.isProcessing) return { action: 'NO_ERROR' };
         this.isProcessing = true;
         
         try {
@@ -36,16 +37,29 @@ export class CDPService {
                 this.disconnect();
                 this.currentHost = config.host;
                 this.currentPort = config.port;
+                this.lastConnectionFailed = false;
             }
 
             if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-                this.logger?.log(`Connecting to CDP at ${config.host}:${config.port}...`);
+                if (!this.lastConnectionFailed) {
+                    this.logger?.log(`Connecting to CDP at ${config.host}:${config.port}...`);
+                }
+                
                 const connected = await this.connect();
                 if (!connected) {
-                    this.logger?.log('Failed to connect to CDP.');
-                    return 'NOT_FOUND';
+                    if (!this.lastConnectionFailed) {
+                        this.logger?.error('Failed to connect to CDP. Polling will continue silently.');
+                        this.lastConnectionFailed = true;
+                    }
+                    return { action: 'NOT_FOUND' };
                 }
-                this.logger?.log('Connected to CDP successfully.');
+                
+                if (this.lastConnectionFailed) {
+                    this.logger?.log('Successfully reconnected to CDP.');
+                } else {
+                    this.logger?.log('Connected to CDP successfully.');
+                }
+                this.lastConnectionFailed = false;
             }
 
             const result = await this.evaluatePayload(config.undoThreshold);
@@ -54,7 +68,7 @@ export class CDPService {
             this.logger?.error('CDP Error:', e);
             console.error('CDP Error:', e);
             this.disconnect();
-            return 'NOT_FOUND';
+            return { action: 'NOT_FOUND' };
         } finally {
             this.isProcessing = false;
         }
@@ -163,6 +177,7 @@ export class CDPService {
                 try {
                     msg = JSON.parse(data.toString());
                 } catch (e) {
+                    this.logger?.error('Failed to parse CDP message:', e);
                     console.error('Failed to parse CDP message:', e);
                     return;
                 }
@@ -196,6 +211,7 @@ export class CDPService {
         if (this.ws) {
             try { this.ws.terminate(); } catch (e) {}
             this.ws = null;
+            this.logger?.log('CDP connection closed.');
         }
         for (const req of this.pendingRequests.values()) {
             clearTimeout(req.timer);
@@ -204,7 +220,7 @@ export class CDPService {
         this.pendingRequests.clear();
     }
 
-    private async evaluatePayload(undoThreshold: number): Promise<'RETRIED' | 'NO_ERROR' | 'NOT_FOUND'> {
+    private async evaluatePayload(undoThreshold: number): Promise<{ action: 'RETRIED' | 'NO_ERROR' | 'NOT_FOUND', logMsg?: string }> {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
             throw new Error('WebSocket is not open');
         }
@@ -212,7 +228,7 @@ export class CDPService {
         // 1. Get all available targets
         const targetsRes = await this.sendCdp('Target.getTargets');
         if (!targetsRes || !targetsRes.targetInfos) {
-            return 'NO_ERROR';
+            return { action: 'NO_ERROR' };
         }
 
         // 2. Filter relevant targets (webviews or main pages)
@@ -228,35 +244,45 @@ export class CDPService {
             return new Promise(async (resolve) => {
                 async function processChat(doc) {
                     const sleep = ms => new Promise(r => setTimeout(r, ms));
-                    const panel = doc.querySelector('.antigravity-agent-side-panel');
-                    if (!panel) return 'NOT_FOUND';
+                    const panels = Array.from(doc.querySelectorAll('.antigravity-agent-side-panel'));
+                    if (panels.length === 0) return { action: 'NOT_FOUND' };
                     
-                    if (!panel.innerText.includes('Agent terminated due to error')) {
-                        return 'NO_ERROR';
-                    }
+                    let foundPanelWithoutError = false;
 
-                    // Determine how many seconds the agent worked before the error
-                    const textNodes = [];
-                    const walker = doc.createTreeWalker(panel, NodeFilter.SHOW_TEXT, null, false);
-                    let node;
-                    while ((node = walker.nextNode())) {
-                        if (node.nodeValue.includes('Worked for')) {
-                            textNodes.push(node.nodeValue);
+                    for (const panel of panels) {
+                        const retryBtns = Array.from(panel.querySelectorAll('button')).filter(btn => btn.innerText && btn.innerText.includes('Retry'));
+                        const errorBannerExists = panel.textContent.includes('Agent terminated due to error');
+                        
+                        if (!errorBannerExists || retryBtns.length === 0) {
+                            foundPanelWithoutError = true;
+                            continue; // Check next panel
                         }
-                    }
+                    
+                        const retryBtn = retryBtns[retryBtns.length - 1];
 
-                    if (textNodes.length === 0) return null;
+                        const chatTurns = Array.from(panel.querySelectorAll('.flex.items-start')).filter(el => {
+                            const text = el.textContent || '';
+                            if (text.includes('Ask anything') || text.includes('PlanMediaMentionsWorkflows')) return false;
+                            if (text.trim().length === 0) return false;
+                            return true;
+                        });
 
-                    const lastWorkedText = textNodes[textNodes.length - 1];
-                    const match = lastWorkedText.match(/Worked for (\\d+)s/);
-                    let seconds = -1;
-                    if (match && match[1]) {
-                        seconds = parseInt(match[1], 10);
-                    }
+                        let seconds = -1;
+                        let logMsg = "No 'Worked for' found in the last message block. Performing Retry.";
+
+                        if (chatTurns.length > 0) {
+                            const lastTurn = chatTurns[chatTurns.length - 1];
+                            const match = (lastTurn.textContent || '').match(/Worked for (\\d+)(s|m)/);
+                            
+                            if (match && match[1]) {
+                                const val = parseInt(match[1], 10);
+                                seconds = match[2] === 'm' ? val * 60 : val;
+                                logMsg = \`Found time in last message block: Worked for \${match[1]}\${match[2]} (\${seconds}s). \`;
+                            }
+                        }
 
                     const threshold = ${undoThreshold};
 
-                    // Helper to click securely
                     function robustClick(el) {
                         const targetWindow = el.ownerDocument.defaultView || window;
                         el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: targetWindow }));
@@ -264,23 +290,31 @@ export class CDPService {
                         el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: targetWindow }));
                     }
 
-                    if (threshold > 0 && seconds >= 0 && seconds <= threshold) {
-                        // Time worked is within the threshold, so we perform the Undo logic
-                        const undoButtons = Array.from(panel.querySelectorAll('button, div[role="button"], span[role="button"]')).filter(btn => {
+                    if (seconds >= 0 && threshold > 0 && seconds <= threshold) {
+                        logMsg += \`Time is within threshold (\${threshold}s). Performing Undo.\`;
+                        
+                        const targetBlock = chatTurns.length > 0 ? chatTurns[chatTurns.length - 1] : panel;
+                        const undoButtons = Array.from(targetBlock.querySelectorAll('button, div[role="button"], span[role="button"], i, span')).filter(btn => {
                             const title = btn.getAttribute('title') || '';
                             const ariaLabel = btn.getAttribute('aria-label') || '';
                             const tooltipId = btn.getAttribute('data-tooltip-id') || '';
-                            return title.includes('Undo') || ariaLabel.includes('Undo') || tooltipId.includes('undo-') || btn.innerHTML.includes('Undo');
+                            const html = btn.outerHTML.toLowerCase();
+                            return title.includes('Undo') || ariaLabel.includes('Undo') || tooltipId.includes('undo') || html.includes('undo');
                         });
 
                         if (undoButtons.length > 0) {
+                            // First dismiss the error banner to unblock UI
+                            const dismissBtns = Array.from(panel.querySelectorAll('button')).filter(btn => btn.innerText && btn.innerText.includes('Dismiss'));
+                            if (dismissBtns.length > 0) {
+                                robustClick(dismissBtns[dismissBtns.length - 1]);
+                                await sleep(300);
+                            }
+
                             const lastUndoBtn = undoButtons[undoButtons.length - 1];
                             robustClick(lastUndoBtn);
 
-                            await sleep(200); 
-                            const confirmBtn = Array.from(doc.querySelectorAll('button')).find(btn => 
-                                btn.innerText && btn.innerText.includes('Confirm')
-                            );
+                            await sleep(300); 
+                            const confirmBtn = Array.from(doc.querySelectorAll('button')).filter(btn => btn.innerText && btn.innerText.includes('Confirm')).pop();
                             if (confirmBtn) robustClick(confirmBtn);
                             
                             await sleep(1000); 
@@ -314,23 +348,26 @@ export class CDPService {
                                 });
                                 inputBox.dispatchEvent(enterEvent);
                             }
-                            return 'RETRIED';
+                            return { action: 'RETRIED', logMsg };
+                        } else {
+                            logMsg += " But no Undo button found. Performing Retry instead.";
+                            robustClick(retryBtn);
+                            return { action: 'RETRIED', logMsg };
                         }
                     } else {
-                        // If threshold is 0 (Undo disabled) OR worked seconds > threshold, just click Retry
-                        const retryButtons = Array.from(panel.querySelectorAll('button')).filter(btn => btn.innerText && btn.innerText.includes('Retry'));
-                        if (retryButtons.length > 0) {
-                            robustClick(retryButtons[0]);
-                            return 'RETRIED';
+                        if (seconds > threshold) {
+                            logMsg += \`Time exceeds threshold (\${threshold}s). Performing Retry.\`;
                         }
+                        robustClick(retryBtn);
+                        return { action: 'RETRIED', logMsg };
                     }
+                } // End of panel loop
+                
+                return foundPanelWithoutError ? { action: 'NO_ERROR' } : { action: 'NOT_FOUND' };
+            }
 
-                    return 'NO_ERROR';
-                }
-
-                // We evaluate exactly in the target's document
                 const result = await processChat(document);
-                resolve(result || 'NOT_FOUND');
+                resolve(result || { action: 'NOT_FOUND' });
             });
         })()`;
 
@@ -361,12 +398,12 @@ export class CDPService {
                 // Detach
                 await this.sendCdp('Target.detachFromTarget', { sessionId });
 
-                if (resultValue === 'RETRIED') {
-                    return 'RETRIED';
+                if (resultValue && resultValue.action === 'RETRIED') {
+                    return resultValue;
                 }
-                if (resultValue === 'NO_ERROR') {
+                if (resultValue && resultValue.action === 'NO_ERROR') {
                     panelFound = true; // Found the panel, but no error
-                    return 'NO_ERROR';
+                    return { action: 'NO_ERROR' };
                 }
             } catch (e) {
                 // Ignore attachment or evaluation errors for this target, just move to the next
@@ -376,6 +413,6 @@ export class CDPService {
             }
         }
 
-        return panelFound ? 'NO_ERROR' : 'NOT_FOUND';
+        return panelFound ? { action: 'NO_ERROR' } : { action: 'NOT_FOUND' };
     }
 }

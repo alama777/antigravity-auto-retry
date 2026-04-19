@@ -44,6 +44,8 @@ export class AutoRetryManager {
         this.cdpHost = config.get<string>('cdpHost', '127.0.0.1');
         this.cdpPort = config.get<number>('cdpPort', 9222);
         this.undoThresholdSeconds = config.get<number>('undoThresholdSeconds', 1);
+
+        this.logger?.log(`Configuration loaded: Host=${this.cdpHost}, Port=${this.cdpPort}, PollInterval=${this.pollIntervalSec}s, UndoThreshold=${this.undoThresholdSeconds}s`);
         
         // Restart timer if running to apply new interval
         if (this.isEnabled) {
@@ -86,7 +88,10 @@ export class AutoRetryManager {
             };
 
             const result = await this.cdpService.checkAndRetry(config);
-            if (result === 'RETRIED') {
+            if (result.action === 'RETRIED') {
+                if (result.logMsg) {
+                    this.logger?.log(`Auto-Retry Info: ${result.logMsg}`);
+                }
                 this.logger?.log('Error detected! Performed Auto-Retry.');
                 this.retryCount++;
                 if (this.onCounterUpdatedCallback) {

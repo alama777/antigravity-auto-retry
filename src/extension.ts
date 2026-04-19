@@ -19,9 +19,12 @@ export async function activate(context: vscode.ExtensionContext) {
     const isAvailable = await autoRetryManager.checkAvailability();
     
     if (!isAvailable) {
+        logger.error('CDP WebSocket is unavailable. Please ensure VS Code was started with --remote-debugging-port.');
         vscode.window.showErrorMessage('Auto-Retry: CDP WebSocket is unavailable. Please ensure VS Code was started with --remote-debugging-port.');
         return;
     }
+
+    logger.log('CDP WebSocket is available.');
 
     // Create status bar item
     const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);

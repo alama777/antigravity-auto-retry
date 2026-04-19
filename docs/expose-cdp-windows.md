@@ -94,11 +94,11 @@ To solve this problem permanently, change the service startup type to "Automatic
 Set-Service iphlpsvc -StartupType AutomaticDelayedStart
 ```
 
-### How to make Chrome always launch with debugging?
-To avoid typing the command every time, edit your Chrome shortcut:
-1. Right-click the Chrome shortcut -> **Properties**.
+### How to make Antigravity always launch with debugging?
+To avoid typing the command every time, edit your Antigravity shortcut:
+1. Right-click the Antigravity shortcut -> **Properties**.
 2. In the **Target** field, append the following to the end (separated by a space): `--remote-debugging-port=9221`.
-3. Click OK. Chrome will now always launch in debug mode.
+3. Click OK. Antigravity will now always launch in debug mode.
 
 ### Security
 > [!CAUTION]

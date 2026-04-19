@@ -1,5 +1,8 @@
 # Antigravity Auto-Retry
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub Repo](https://img.shields.io/badge/GitHub-alama777%2Fantigravity--auto--retry-blue?logo=github)](https://github.com/alama777/antigravity-auto-retry)
+
 An automated recovery plugin for the **Google Antigravity** IDE. This plugin leverages the Chrome DevTools Protocol (CDP) to monitor the agent's side panel and automatically click **"Retry"** or perform an **"Undo & Resubmit"** flow when the agent terminates unexpectedly due to server or network errors.
 
 ## 🚀 Features

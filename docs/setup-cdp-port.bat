@@ -30,8 +30,8 @@ if "%IP%"=="" (
 echo [+] Found IP: %IP%
 
 echo.
-set "PORT=9222"
-set /p PORT="Enter port number (default 9222): "
+set "PORT=9221"
+set /p PORT="Enter port number (default 9221): "
 
 echo.
 echo [+] Setting up port forwarding (%PORT% -^> 127.0.0.1:%PORT%)...

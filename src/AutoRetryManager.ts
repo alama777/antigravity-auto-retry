@@ -7,7 +7,7 @@ export class AutoRetryManager {
     private pollIntervalSec: number = 5;
     
     private cdpHost: string = '127.0.0.1';
-    private cdpPort: number = 9222;
+    private cdpPort: number = 9221;
     private undoThresholdSeconds: number = 1;
 
     private timer: NodeJS.Timeout | null = null;
@@ -42,7 +42,7 @@ export class AutoRetryManager {
         const config = vscode.workspace.getConfiguration('autoRetry');
         this.pollIntervalSec = config.get<number>('pollInterval', 5);
         this.cdpHost = config.get<string>('cdpHost', '127.0.0.1');
-        this.cdpPort = config.get<number>('cdpPort', 9222);
+        this.cdpPort = config.get<number>('cdpPort', 9221);
         this.undoThresholdSeconds = config.get<number>('undoThresholdSeconds', 1);
 
         this.logger?.log(`Configuration loaded: Host=${this.cdpHost}, Port=${this.cdpPort}, PollInterval=${this.pollIntervalSec}s, UndoThreshold=${this.undoThresholdSeconds}s`);

@@ -1,6 +1,6 @@
 # Instructions for Setting Up Remote Access to Chrome DevTools Protocol (CDP) in Windows 11
 
-This guide describes how to make the CDP port (default 9222) accessible to external devices (e.g., from WSL or another machine on the local network) when the standard `--remote-debugging-address=0.0.0.0` flag fails to work.
+This guide describes how to make the CDP port (default 9221) accessible to external devices (e.g., from WSL or another machine on the local network) when the standard `--remote-debugging-address=0.0.0.0` flag fails to work.
 
 ## 📖 Background: Why is this necessary?
 
@@ -19,7 +19,7 @@ For your convenience, there is a `setup-cdp-port.bat` script in this folder that
 
 1. Run `setup-cdp-port.bat`.
 2. Allow execution as Administrator if prompted.
-3. The script will automatically find your local IP address, ask for the port (default 9222), and configure port forwarding and the firewall.
+3. The script will automatically find your local IP address, ask for the port (default 9221), and configure port forwarding and the firewall.
 
 ---
 
@@ -33,15 +33,15 @@ Since Chrome often binds only to `127.0.0.1`, you need to configure Windows to r
 1. Open **PowerShell** as **Administrator**.
 2. Run the following command:
 ```powershell
-netsh interface portproxy add v4tov4 listenport=9222 listenaddress=192.168.1.2 connectport=9222 connectaddress=127.0.0.1
+netsh interface portproxy add v4tov4 listenport=9221 listenaddress=192.168.1.2 connectport=9221 connectaddress=127.0.0.1
 ```
 
 ## 2. Configure Windows Firewall
-You need to open port 9222 for inbound connections.
+You need to open port 9221 for inbound connections.
 
 1. In PowerShell (as Administrator), run:
 ```powershell
-New-NetFirewallRule -DisplayName "Allow CDP Remote Debugging" -Direction Inbound -LocalPort 9222 -Protocol TCP -Action Allow
+New-NetFirewallRule -DisplayName "Allow CDP Remote Debugging" -Direction Inbound -LocalPort 9221 -Protocol TCP -Action Allow
 ```
 
 ## 3. Launch Chrome
@@ -49,7 +49,7 @@ Ensure all existing Chrome processes are completely closed before starting.
 
 Launch Chrome with the remote debugging port flag:
 ```cmd
-chrome.exe --remote-debugging-port=9222
+chrome.exe --remote-debugging-port=9221
 ```
 
 ## 4. Test the Connection
@@ -57,7 +57,7 @@ From the remote machine or WSL, make a request to the Windows host's IP address:
 
 *Replace 192.168.1.2 with the actual IP address of your Windows machine*
 ```bash
-curl http://192.168.1.2:9222/json/version
+curl http://192.168.1.2:9221/json/version
 ```
 
 If the setup was successful, you will receive a JSON response.
@@ -73,7 +73,7 @@ netsh interface portproxy show all
 
 ### Delete a port proxy rule:
 ```powershell
-netsh interface portproxy delete v4tov4 listenport=9222 listenaddress=192.168.1.2
+netsh interface portproxy delete v4tov4 listenport=9221 listenaddress=192.168.1.2
 ```
 
 ## Automation and Persistence
@@ -96,7 +96,7 @@ Set-Service iphlpsvc -StartupType AutomaticDelayedStart
 ### How to make Chrome always launch with debugging?
 To avoid typing the command every time, edit your Chrome shortcut:
 1. Right-click the Chrome shortcut -> **Properties**.
-2. In the **Target** field, append the following to the end (separated by a space): `--remote-debugging-port=9222`.
+2. In the **Target** field, append the following to the end (separated by a space): `--remote-debugging-port=9221`.
 3. Click OK. Chrome will now always launch in debug mode.
 
 ### Security

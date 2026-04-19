@@ -20,7 +20,7 @@ Because this extension uses the Chrome DevTools Protocol to inspect and interact
 You can do this by launching the IDE from your terminal or command prompt:
 
 ```bash
-code --remote-debugging-port=9222
+antigravity --remote-debugging-port=9222
 ```
 
 *(You can also modify your Antigravity shortcut to always include this flag).*

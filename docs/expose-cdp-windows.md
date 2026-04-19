@@ -1,79 +1,104 @@
-# Инструкция по настройке удаленного доступа к Chrome DevTools Protocol (CDP) в Windows 11
+# Instructions for Setting Up Remote Access to Chrome DevTools Protocol (CDP) in Windows 11
 
-Эта инструкция описывает, как сделать CDP порт (по умолчанию 9222) доступным для внешних устройств (например, из WSL или другой машины в локальной сети), когда стандартный флаг `--remote-debugging-address=0.0.0.0` не срабатывает.
+This guide describes how to make the CDP port (default 9222) accessible to external devices (e.g., from WSL or another machine on the local network) when the standard `--remote-debugging-address=0.0.0.0` flag fails to work.
 
-## 1. Настройка проброса порта (Port Proxying)
-Так как Chrome часто привязывается только к `127.0.0.1`, необходимо настроить Windows на перенаправление входящего трафика с внешнего интерфейса на локальный.
+## 📖 Background: Why is this necessary?
 
-1. Откройте **PowerShell** от имени **Администратора**.
-2. Выполните команду:
+By design, when you start Chrome or Electron-based applications (like VS Code or Antigravity) with the `--remote-debugging-port` flag, the CDP server binds exclusively to the `localhost` (`127.0.0.1`) interface for security reasons. 
+
+While Chrome *does* have a `--remote-debugging-address` flag that theoretically allows you to bind it to `0.0.0.0` (all interfaces), this flag is often ignored or blocked on Windows due to internal security policies or how certain IDEs wrap the Chromium engine.
+
+As a result, if you try to connect to the debugger from a Remote SSH session, another machine on your network, or a WSL instance (which runs on a separate virtual network by default), the connection will be refused because the port is simply not listening on your machine's external IP address.
+
+To bypass this limitation, we use Windows `netsh portproxy` to intercept traffic coming to your external IP address and forward it internally to `127.0.0.1`, effectively tricking Chrome into thinking the connection is originating locally.
+
+---
+
+## ⚡ Automated Setup (Recommended)
+For your convenience, there is a `setup-cdp-port.bat` script in this folder that handles everything automatically.
+
+1. Run `setup-cdp-port.bat`.
+2. Allow execution as Administrator if prompted.
+3. The script will automatically find your local IP address, ask for the port (default 9222), and configure port forwarding and the firewall.
+
+---
+
+## 🛠 Manual Setup
+
+If you prefer to configure everything manually, follow the steps below.
+
+### 1. Configure Port Proxying
+Since Chrome often binds only to `127.0.0.1`, you need to configure Windows to redirect incoming traffic from the external interface to the local loopback.
+
+1. Open **PowerShell** as **Administrator**.
+2. Run the following command:
 ```powershell
 netsh interface portproxy add v4tov4 listenport=9222 listenaddress=192.168.1.2 connectport=9222 connectaddress=127.0.0.1
 ```
 
-## 2. Настройка Брандмауэра Windows (Firewall)
-Необходимо открыть порт 9222 для входящих соединений.
+## 2. Configure Windows Firewall
+You need to open port 9222 for inbound connections.
 
-1. В PowerShell (от Администратора) выполните:
+1. In PowerShell (as Administrator), run:
 ```powershell
 New-NetFirewallRule -DisplayName "Allow CDP Remote Debugging" -Direction Inbound -LocalPort 9222 -Protocol TCP -Action Allow
 ```
 
-## 3. Запуск Chrome
-Перед запуском убедитесь, что все существующие процессы Chrome завершены.
+## 3. Launch Chrome
+Ensure all existing Chrome processes are completely closed before starting.
 
-Запустите Chrome с флагом порта:
+Launch Chrome with the remote debugging port flag:
 ```cmd
 chrome.exe --remote-debugging-port=9222
 ```
 
-## 4. Проверка соединения
-С удаленной машины или из WSL выполните запрос к IP-адресу Windows-хоста:
+## 4. Test the Connection
+From the remote machine or WSL, make a request to the Windows host's IP address:
 
-*Замените 192.168.1.2 на реальный IP вашей Windows-машины*
+*Replace 192.168.1.2 with the actual IP address of your Windows machine*
 ```bash
 curl http://192.168.1.2:9222/json/version
 ```
 
-Если настройка прошла успешно, вы получите JSON-ответ.
+If the setup was successful, you will receive a JSON response.
 
 ---
 
-## Дополнительные команды
+## Additional Commands
 
-### Просмотр текущих правил проброса:
+### View current port proxy rules:
 ```powershell
 netsh interface portproxy show all
 ```
 
-### Удаление правила проброса:
+### Delete a port proxy rule:
 ```powershell
 netsh interface portproxy delete v4tov4 listenport=9222 listenaddress=192.168.1.2
 ```
 
-## Автоматизация и перезагрузка
+## Automation and Persistence
 
-### Сохраняются ли настройки?
-*   **Netsh Portproxy:** Да, сохраняется в реестре и действует после перезагрузки.
-*   **Firewall Rule:** Да, правило остается активным постоянно.
+### Do these settings persist after reboot?
+*   **Netsh Portproxy:** Yes, it is saved in the registry and persists across reboots.
+*   **Firewall Rule:** Yes, the rule remains permanently active.
 
-### Что делать, если после перезагрузки не работает?
-Иногда служба `iphlpsvc` (IP Helper), отвечающая за проброс, запускается слишком рано. Если связь пропала, попробуйте перезапустить службу в PowerShell от Администратора:
+### What to do if it stops working after a reboot?
+Sometimes the `iphlpsvc` (IP Helper) service, which is responsible for port proxying, starts too early. If the connection drops, try restarting the service via PowerShell as Administrator:
 ```powershell
 Restart-Service iphlpsvc
 ```
 
-Чтобы решить эту проблему навсегда, измените тип запуска службы на «Автоматически (Отложенный запуск)»:
+To solve this problem permanently, change the service startup type to "Automatic (Delayed Start)":
 ```powershell
 Set-Service iphlpsvc -StartupType AutomaticDelayedStart
 ```
 
-### Как сделать запуск Chrome постоянным?
-Чтобы не вводить команду каждый раз, отредактируйте ярлык Chrome:
-1. Нажмите правой кнопкой на ярлык Chrome -> **Свойства**.
-2. В поле **Объект** (Target) добавьте в конец через пробел: `--remote-debugging-port=9222`.
-3. Нажмите ОК. Теперь Chrome всегда будет запускаться в режиме отладки.
+### How to make Chrome always launch with debugging?
+To avoid typing the command every time, edit your Chrome shortcut:
+1. Right-click the Chrome shortcut -> **Properties**.
+2. In the **Target** field, append the following to the end (separated by a space): `--remote-debugging-port=9222`.
+3. Click OK. Chrome will now always launch in debug mode.
 
-### Безопасность
+### Security
 > [!CAUTION]
-> Протокол CDP не требует авторизации. Любое устройство в вашей сети сможет получить полный контроль над браузером. Используйте эту настройку только в доверенных сетях.
+> The CDP protocol does not require authentication. Any device on your network will be able to gain full control over the browser. Use this setup only in trusted networks.

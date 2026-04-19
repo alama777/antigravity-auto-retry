@@ -25,6 +25,8 @@ antigravity --remote-debugging-port=9222
 
 *(You can also modify your Antigravity shortcut to always include this flag).*
 
+> **Note for Windows users:** If you need to access the CDP port from WSL (in Bridge mode) or via a Remote SSH connection, see the [CDP Setup Windows Instruction](./docs/expose-cdp-windows.md).
+
 ## ⚙️ Configuration Settings
 
 This extension contributes the following settings. You can customize them in your `settings.json`:

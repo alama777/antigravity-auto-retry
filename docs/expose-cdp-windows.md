@@ -35,6 +35,7 @@ Since Chrome often binds only to `127.0.0.1`, you need to configure Windows to r
 ```powershell
 netsh interface portproxy add v4tov4 listenport=9221 listenaddress=192.168.1.2 connectport=9221 connectaddress=127.0.0.1
 ```
+*Replace 192.168.1.2 with the actual IP address of your Windows machine*
 
 ## 2. Configure Windows Firewall
 You need to open port 9221 for inbound connections.
@@ -55,10 +56,10 @@ chrome.exe --remote-debugging-port=9221
 ## 4. Test the Connection
 From the remote machine or WSL, make a request to the Windows host's IP address:
 
-*Replace 192.168.1.2 with the actual IP address of your Windows machine*
 ```bash
 curl http://192.168.1.2:9221/json/version
 ```
+*Replace 192.168.1.2 with the actual IP address of your Windows machine*
 
 If the setup was successful, you will receive a JSON response.
 

@@ -45,13 +45,15 @@ You need to open port 9221 for inbound connections.
 New-NetFirewallRule -DisplayName "Allow CDP Remote Debugging" -Direction Inbound -LocalPort 9221 -Protocol TCP -Action Allow
 ```
 
-## 3. Launch Chrome
-Ensure all existing Chrome processes are completely closed before starting.
+## 3. Launch the Target Application
+Before starting, make sure all instances of the target Chromium-based application (Chrome, Antigravity, VS Code, etc.) are completely closed — otherwise the debugging port may already be occupied.
 
-Launch Chrome with the remote debugging port flag:
+Launch the application with the remote debugging port flag:
 ```cmd
 chrome.exe --remote-debugging-port=9221
 ```
+> [!NOTE]
+> For Electron-based applications (e.g., Antigravity, VS Code), replace `chrome.exe` with the corresponding executable name.
 
 ## 4. Test the Connection
 From the remote machine or WSL, make a request to the Windows host's IP address:

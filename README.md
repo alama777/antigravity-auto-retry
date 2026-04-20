@@ -47,7 +47,8 @@ This extension contributes the following settings. You can customize them in you
 4. Click the status bar item to toggle it `ON`. The icon will spin.
 5. Go grab a coffee! If the agent crashes, the plugin will handle it automatically and increment the retry counter on the status bar.
 
-![Status bar showing Auto-Retry active with retry count](images/status-bar.png)
+![Status bar showing Auto-Retry active with retry count](https://raw.githubusercontent.com/alama777/antigravity-auto-retry/main/images/status-bar.png)
+*Auto-Retry status bar with retry counter*
 
 ## 🐛 Known Issues & Limitations
 

@@ -36,7 +36,8 @@ This extension contributes the following settings. You can customize them in you
 
 *   `autoRetry.cdpHost`: The host address for the Chrome DevTools Protocol. **Default: `127.0.0.1`**
 *   `autoRetry.cdpPort`: The port number you passed to Antigravity via the `--remote-debugging-port` flag. **Default: `9221`**
-*   `autoRetry.pollInterval`: The interval (in seconds) at which the plugin checks the agent's status. **Default: `5`**
+*   `autoRetry.pollIntervalMin`: The minimum polling interval (in seconds) at which the plugin randomly checks the agent's status. **Default: `5`**
+*   `autoRetry.pollIntervalMax`: The maximum polling interval (in seconds) at which the plugin randomly checks the agent's status. **Default: `10`**
 *   `autoRetry.undoThresholdSeconds`: The time threshold (in seconds) to perform the Undo flow. If the agent crashes and worked for `<= threshold` seconds, the plugin will click *Undo*, confirm, and resubmit the prompt. If the agent worked for longer, it will just click *Retry*. Set to `0` to completely disable the Undo flow and always use Retry. **Default: `1`**
 
 ## 🎮 How to Use

@@ -49,7 +49,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Handle configuration changes
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-        if (e.affectsConfiguration('autoRetry.pollInterval') ||
+        if (e.affectsConfiguration('autoRetry.pollIntervalMin') ||
+            e.affectsConfiguration('autoRetry.pollIntervalMax') ||
             e.affectsConfiguration('autoRetry.cdpHost') ||
             e.affectsConfiguration('autoRetry.cdpPort') ||
             e.affectsConfiguration('autoRetry.undoThresholdSeconds')) {

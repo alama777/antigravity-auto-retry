@@ -91,9 +91,23 @@ if (seconds >= 0 && threshold > 0 && seconds <= threshold) {
     // Ищем кнопку Undo в последнем блоке
     const targetBlock = chatTurns.length > 0 ? chatTurns[chatTurns.length - 1] : panel;
     const undoButtons = Array.from(targetBlock.querySelectorAll('button, div[role="button"], span[role="button"], i, span')).filter(btn => {
-        const title = btn.getAttribute('title') || '';
-        const html = btn.outerHTML.toLowerCase();
-        return title.includes('Undo') || html.includes('undo');
+        const title = (btn.getAttribute('title') || '').toLowerCase();
+        const ariaLabel = (btn.getAttribute('aria-label') || '').toLowerCase();
+        const tooltipId = (btn.getAttribute('data-tooltip-id') || '').toLowerCase();
+        const testId = (btn.getAttribute('data-testid') || '').toLowerCase();
+        const cls = (btn.className || '').toString().toLowerCase();
+        const txt = (btn.textContent || '').trim().toLowerCase();
+
+        // Явно исключаем ложные срабатывания (например, кнопки Accept all / Reject all)
+        if (txt.includes('accept all') || txt.includes('reject all')) return false;
+
+        if (title.includes('undo') || ariaLabel.includes('undo') || tooltipId.includes('undo') || testId.includes('undo') || testId.includes('revert')) return true;
+
+        if (btn.tagName.toLowerCase() === 'i' || btn.tagName.toLowerCase() === 'span') {
+            if (cls.includes('undo') || cls.includes('revert')) return true;
+            if (txt === 'undo' || txt === 'revert') return true;
+        }
+        return false;
     });
 
     if (undoButtons.length > 0) {
@@ -114,9 +128,31 @@ if (seconds >= 0 && threshold > 0 && seconds <= threshold) {
         if (inputBox) {
             robustClick(inputBox);
             inputBox.focus();
-            // Эмуляция нажатия Enter (или клик по кнопке Send)
-            const enterEvent = new KeyboardEvent('keydown', { keyCode: 13, key: 'Enter', code: 'Enter' });
-            inputBox.dispatchEvent(enterEvent);
+            // Поиск кнопки Send
+            const possibleBtns = Array.from(panel.querySelectorAll('button, [role="button"], a, div.clickable, span.clickable')).filter(btn => {
+                const title = (btn.getAttribute('title') || '').toLowerCase();
+                const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+                const cls = (btn.className || '').toString().toLowerCase();
+                const testId = (btn.getAttribute('data-testid') || '').toLowerCase();
+                const txtBtn = (btn.textContent || '').trim().toLowerCase();
+                
+                if (txtBtn.includes('accept all') || txtBtn.includes('reject all')) return false;
+                if (title.includes('send') || title.includes('submit') || aria.includes('send') || aria.includes('submit') || testId.includes('send') || testId.includes('submit') || cls.includes('send') || cls.includes('submit')) return true;
+                
+                const html = btn.innerHTML.toLowerCase();
+                if (html.includes('codicon-send') || html.includes('codicon-arrow-right')) return true;
+                return false;
+            });
+
+            const sendBtn = possibleBtns.filter(btn => btn.offsetParent !== null).pop();
+
+            if (sendBtn) {
+                robustClick(sendBtn);
+            } else {
+                // Фоллбэк: Эмуляция нажатия Enter
+                const enterEvent = new KeyboardEvent('keydown', { keyCode: 13, key: 'Enter', code: 'Enter' });
+                inputBox.dispatchEvent(enterEvent);
+            }
         }
         return { action: 'RETRIED', logMsg };
     }

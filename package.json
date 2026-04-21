@@ -24,10 +24,15 @@
     "configuration": {
       "title": "Auto-Retry Plugin",
       "properties": {
-        "autoRetry.pollInterval": {
+        "autoRetry.pollIntervalMin": {
           "type": "number",
           "default": 5,
-          "description": "Polling interval in seconds to search for errors in the agent."
+          "description": "Minimum polling interval in seconds to search for errors in the agent."
+        },
+        "autoRetry.pollIntervalMax": {
+          "type": "number",
+          "default": 10,
+          "description": "Maximum polling interval in seconds to search for errors in the agent."
         },
         "autoRetry.cdpHost": {
           "type": "string",

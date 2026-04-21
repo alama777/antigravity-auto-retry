@@ -4,7 +4,8 @@ import { CDPService, Logger } from './CDPService';
 export class AutoRetryManager {
     public isEnabled: boolean = false;
     private retryCount: number = 0;
-    private pollIntervalSec: number = 5;
+    private pollIntervalMinSec: number = 5;
+    private pollIntervalMaxSec: number = 10;
     
     private cdpHost: string = '127.0.0.1';
     private cdpPort: number = 9221;
@@ -40,12 +41,13 @@ export class AutoRetryManager {
 
     public reloadConfig() {
         const config = vscode.workspace.getConfiguration('autoRetry');
-        this.pollIntervalSec = config.get<number>('pollInterval', 5);
+        this.pollIntervalMinSec = config.get<number>('pollIntervalMin', 5);
+        this.pollIntervalMaxSec = config.get<number>('pollIntervalMax', 10);
         this.cdpHost = config.get<string>('cdpHost', '127.0.0.1');
         this.cdpPort = config.get<number>('cdpPort', 9221);
         this.undoThresholdSeconds = config.get<number>('undoThresholdSeconds', 1);
 
-        this.logger?.log(`Configuration loaded: Host=${this.cdpHost}, Port=${this.cdpPort}, PollInterval=${this.pollIntervalSec}s, UndoThreshold=${this.undoThresholdSeconds}s`);
+        this.logger?.log(`Configuration loaded: Host=${this.cdpHost}, Port=${this.cdpPort}, PollIntervalMin=${this.pollIntervalMinSec}s, PollIntervalMax=${this.pollIntervalMaxSec}s, UndoThreshold=${this.undoThresholdSeconds}s`);
         
         // Restart timer if running to apply new interval
         if (this.isEnabled) {
@@ -59,17 +61,30 @@ export class AutoRetryManager {
     }
 
     private startPolling() {
-        if (this.timer) {
-            clearInterval(this.timer);
-        }
-        this.timer = setInterval(() => this.tick(), this.pollIntervalSec * 1000);
+        this.stopPolling();
         // Do immediately once
-        this.tick();
+        this.tick().finally(() => {
+            this.scheduleNextPoll();
+        });
+    }
+
+    private scheduleNextPoll() {
+        if (!this.isEnabled) return;
+        
+        const min = this.pollIntervalMinSec;
+        const max = Math.max(min, this.pollIntervalMaxSec);
+        const delaySec = Math.floor(Math.random() * (max - min + 1)) + min;
+        
+        this.timer = setTimeout(() => {
+            this.tick().finally(() => {
+                this.scheduleNextPoll();
+            });
+        }, delaySec * 1000);
     }
 
     private stopPolling() {
         if (this.timer) {
-            clearInterval(this.timer);
+            clearTimeout(this.timer);
             this.timer = null;
         }
         // Force disconnect so host/port changes can take effect next time

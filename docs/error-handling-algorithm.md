@@ -17,7 +17,7 @@
 
 ```javascript
 // Поиск панелей агента
-const panels = Array.from(doc.querySelectorAll('.antigravity-agent-side-panel'));
+const panels = Array.from(document.querySelectorAll('.antigravity-agent-side-panel'));
 if (panels.length === 0) return { action: 'NOT_FOUND' };
 
 for (const panel of panels) {
@@ -111,23 +111,46 @@ if (seconds >= 0 && threshold > 0 && seconds <= threshold) {
     });
 
     if (undoButtons.length > 0) {
-        // Закрываем баннер с ошибкой
+        // Закрываем баннер с ошибкой (чтобы разблокировать UI)
         const dismissBtns = Array.from(panel.querySelectorAll('button')).filter(btn => btn.innerText && btn.innerText.includes('Dismiss'));
-        if (dismissBtns.length > 0) robustClick(dismissBtns[dismissBtns.length - 1]);
+        if (dismissBtns.length > 0) {
+            robustClick(dismissBtns[dismissBtns.length - 1]);
+            await sleep(300); // Даем UI время на анимацию скрытия
+        }
 
         // Нажимаем Undo
         const lastUndoBtn = undoButtons[undoButtons.length - 1];
         robustClick(lastUndoBtn);
 
-        // Нажимаем Confirm
-        const confirmBtn = Array.from(doc.querySelectorAll('button')).filter(btn => btn.innerText && btn.innerText.includes('Confirm')).pop();
+        // Умное ожидание и нажатие кнопки Confirm
+        const getConfirmBtn = () => Array.from(document.querySelectorAll('button')).filter(btn => btn.innerText && btn.innerText.includes('Confirm')).pop();
+        let confirmBtn = getConfirmBtn();
+        if (!confirmBtn) {
+            const startWait = Date.now();
+            while (Date.now() - startWait < 2000) {
+                await sleep(100);
+                confirmBtn = getConfirmBtn();
+                if (confirmBtn) break;
+            }
+        }
         if (confirmBtn) robustClick(confirmBtn);
         
-        // Фокус на поле ввода и отправка сообщения
-        const inputBox = panel.querySelector('#antigravity\\.agentSidePanelInputBox, textarea, [contenteditable="true"]');
+        // Умное ожидание поля ввода
+        let inputBox = panel.querySelector('#antigravity\\.agentSidePanelInputBox, textarea, [contenteditable="true"]');
+        if (!inputBox) {
+            const startWait = Date.now();
+            while (Date.now() - startWait < 2000) {
+                await sleep(100);
+                inputBox = panel.querySelector('#antigravity\\.agentSidePanelInputBox, textarea, [contenteditable="true"]');
+                if (inputBox) break;
+            }
+        }
+
         if (inputBox) {
             robustClick(inputBox);
             inputBox.focus();
+            await sleep(100);
+
             // Поиск кнопки Send
             const possibleBtns = Array.from(panel.querySelectorAll('button, [role="button"], a, div.clickable, span.clickable')).filter(btn => {
                 const title = (btn.getAttribute('title') || '').toLowerCase();
@@ -150,7 +173,7 @@ if (seconds >= 0 && threshold > 0 && seconds <= threshold) {
                 robustClick(sendBtn);
             } else {
                 // Фоллбэк: Эмуляция нажатия Enter
-                const enterEvent = new KeyboardEvent('keydown', { keyCode: 13, key: 'Enter', code: 'Enter' });
+                const enterEvent = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, keyCode: 13, key: 'Enter', code: 'Enter' });
                 inputBox.dispatchEvent(enterEvent);
             }
         }
